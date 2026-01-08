@@ -1,0 +1,16 @@
+# Ambiente virtuale
+.venv/
+__pycache__/
+*.pyc
+
+# Dataset (Ignora tutti i file CSV pesanti)
+*.zip
+*.gz
+dataset/
+
+# File di sistema
+.DS_Store
+Thumbs.db
+
+# Credenziali (se userai Kaggle API)
+kaggle.json
