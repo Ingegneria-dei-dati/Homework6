@@ -1,91 +1,148 @@
 import pandas as pd
-import os
+import numpy as np
 
-# --- PUNTO 2: DEFINIZIONE SCHEMA MEDIATO ---
-def definisci_schema_mediato():
-    """
-    Definisce i mapping basati sull'analisi reale: 
-    - VIN al 100% per US_CARS.
-    - Rimozione di 'condition' da US_CARS per evitare errori.
-    """
-    map_craigslist = {
-        'id': 'id_univoco', 'VIN': 'vin', 'manufacturer': 'marca', 'model': 'modello',
-        'year': 'anno', 'price': 'prezzo', 'odometer': 'miglia', 'fuel': 'carburante',
-        'transmission': 'cambio', 'drive': 'trazione', 'cylinders': 'cilindri',
-        'type': 'carrozzeria', 'paint_color': 'colore_est', 'condition': 'condizione',
-        'title_status': 'titolo', 'lat': 'latitudine', 'long': 'longitudine',
-        'state': 'stato_usa', 'posting_date': 'data_post'
-    }
+# ============================================================
+# 1. DEFINIZIONE DELLO SCHEMA MEDIATO
+# ============================================================
 
-    map_us_cars = {
-        'listing_id': 'id_univoco', 'vin': 'vin', 'make_name': 'marca', 'model_name': 'modello',
-        'year': 'anno', 'price': 'prezzo', 'mileage': 'miglia', 'fuel_type': 'carburante',
-        'transmission': 'cambio', 'wheel_system': 'trazione', 'engine_cylinders': 'cilindri',
-        'body_type': 'carrozzeria', 'exterior_color': 'colore_est',
-        'salvage': 'titolo', 'latitude': 'latitudine', 'longitude': 'longitudine',
-        'dealer_zip': 'stato_usa', 'listed_date': 'data_post'
-    }
-    return map_craigslist, map_us_cars
+MEDIATED_SCHEMA = [
+    "Vin",
+    "listing_id",
+    "make",
+    "model",
+    "year",
+    "price",
+    "mileage",
+    "fuel_type",
+    "transmission",
+    "body_type",
+    "drive",
+    "condition",
+    "color",
+    "engine_cylinders",
+    "latitude",
+    "longitude",
+    "state",
+    "description",
+    "listing_date",
+    "source"
+]
 
-# --- PUNTO 3: ALLINEAMENTO FISICO ---
-def esegui_integrazione_allineata():
-    print("--- INIZIO PUNTO 3: INTEGRAZIONE ALLINEATA ---")
-    cartella = "dataset"
-    file_uscita = os.path.join(cartella, "auto_integrate_finale.csv")
-    
-    # Pulizia file precedente
-    if os.path.exists(file_uscita):
-        os.remove(file_uscita)
+# ============================================================
+# 2. ALLINEAMENTO CRAIGSLIST
+# ============================================================
 
-    # Otteniamo i mapping dal Punto 2
-    map_c, map_u = definisci_schema_mediato()
-    
-    config = [
-        {'path': "craigslist_vehicles.csv", 'label': "CRAIGSLIST", 'map': map_c},
-        {'path': "used_cars_data.csv", 'label': "US_CARS", 'map': map_u}
-    ]
+def align_craigslist(df: pd.DataFrame) -> pd.DataFrame:
+    aligned = pd.DataFrame()
 
-    scrivi_header = True
-    for c in config:
-        full_path = os.path.join(cartella, c['path'])
-        if not os.path.exists(full_path):
-            print(f"Salto {c['label']}: file non trovato in {full_path}")
-            continue
+    aligned["Vin"] = df["VIN"]
+    aligned["listing_id"] = df["id"]
 
-        print(f"Elaborazione {c['label']}...")
-        
-        # Identifichiamo quali colonne del mapping esistono davvero nel file CSV
-        cols_nel_file = pd.read_csv(full_path, nrows=0).columns.tolist()
-        map_valido = {k: v for k, v in c['map'].items() if k in cols_nel_file}
-        
-        # Lettura a blocchi (chunking) per gestire i 3 milioni di righe
-        reader = pd.read_csv(full_path, usecols=list(map_valido.keys()), chunksize=150000, low_memory=False)
-        
-        count = 0
-        for chunk in reader:
-            # 1. Rinominiamo secondo lo schema mediato
-            chunk = chunk.rename(columns=map_valido)
-            
-            # 2. Forziamo l'etichetta provenienza per ogni singola riga
-            chunk['provenienza'] = c['label']
-            
-            # 3. Standardizzazione testo (tutto minuscolo e pulito)
-            cols_testo = ['marca', 'modello', 'carburante', 'cambio', 'trazione']
-            for col in cols_testo:
-                if col in chunk.columns:
-                    chunk[col] = chunk[col].astype(str).str.lower().str.strip()
-            
-            # 4. Scrittura incrementale
-            chunk.to_csv(file_uscita, mode='a', index=False, header=scrivi_header)
-            scrivi_header = False
-            
-            count += len(chunk)
-            print(f"Righe accumulate per {c['label']}: {count}", end='\r')
-            
-        print(f"\n{c['label']} completato ({count} righe).")
+    aligned["make"] = df["manufacturer"]
+    aligned["model"] = df["model"]
+    aligned["year"] = df["year"]
+    aligned["price"] = df["price"]
+    aligned["mileage"] = df["odometer"]
 
-    print(f"\n--- PUNTO 3 COMPLETATO CON SUCCESSO ---")
-    print(f"File integrato salvato in: {file_uscita}")
+    aligned["fuel_type"] = df["fuel"]
+    aligned["transmission"] = df["transmission"]
+    aligned["body_type"] = df["type"]
+    aligned["drive"] = df["drive"]
+    aligned["condition"] = df["condition"]
+    aligned["color"] = df["paint_color"]
+    aligned["engine_cylinders"] = df["cylinders"]
+
+    aligned["latitude"] = df["lat"]
+    aligned["longitude"] = df["long"]
+    aligned["state"] = df["state"]
+
+    aligned["description"] = df["description"]
+
+    # FIX: timezone-safe
+    aligned["listing_date"] = pd.to_datetime(
+        df["posting_date"], errors="coerce", utc=True
+    )
+
+    aligned["source"] = "craigslist"
+
+    return aligned[MEDIATED_SCHEMA]
+
+# ============================================================
+# 3. ALLINEAMENTO US USED CARS
+# ============================================================
+
+def align_used_cars(df: pd.DataFrame) -> pd.DataFrame:
+    aligned = pd.DataFrame()
+
+    aligned["Vin"] = df["vin"]
+    aligned["listing_id"] = df["listing_id"]
+
+    aligned["make"] = df["make_name"]
+    aligned["model"] = df["model_name"]
+    aligned["year"] = df["year"]
+    aligned["price"] = df["price"]
+    aligned["mileage"] = df["mileage"]
+
+    aligned["fuel_type"] = df["fuel_type"]
+    aligned["transmission"] = df["transmission_display"]
+    aligned["body_type"] = df["body_type"]
+    aligned["drive"] = df["wheel_system_display"]
+
+    # FIX: mappatura sicura boolean → string
+    aligned["condition"] = df["is_new"].map({
+        True: "new",
+        False: "used"
+    })
+
+    aligned["color"] = df["exterior_color"]
+    aligned["engine_cylinders"] = df["engine_cylinders"]
+
+    aligned["latitude"] = df["latitude"]
+    aligned["longitude"] = df["longitude"]
+
+    aligned["state"] = np.nan
+
+    aligned["description"] = df["description"]
+    aligned["listing_date"] = pd.to_datetime(
+        df["listed_date"], errors="coerce", utc=True
+    )
+
+    aligned["source"] = "us_used_cars"
+
+    return aligned[MEDIATED_SCHEMA]
+
+# ============================================================
+# 4. PIPELINE DI INTEGRAZIONE
+# ============================================================
+
+def main():
+    print("Caricamento dataset...")
+
+    craigslist_df = pd.read_csv("dataset/craigslist_vehicles.csv")
+    used_cars_df = pd.read_csv("dataset/used_cars_data.csv")
+
+    print(f"Craigslist: {craigslist_df.shape}")
+    print(f"Used Cars: {used_cars_df.shape}")
+
+    print("\nAllineamento allo schema mediato...")
+    craigslist_aligned = align_craigslist(craigslist_df)
+    used_cars_aligned = align_used_cars(used_cars_df)
+
+    print("Integrazione delle sorgenti...")
+    integrated_df = pd.concat(
+        [craigslist_aligned, used_cars_aligned],
+        ignore_index=True
+    )
+
+    print("\nSchema mediato finale:")
+    print(integrated_df.info())
+
+    integrated_df.to_csv("dataset/integrated_cars.csv", index=False)
+    print("\nDataset integrato salvato in dataset/integrated_cars.csv")
+
+# ============================================================
+# 5. AVVIO SCRIPT
+# ============================================================
 
 if __name__ == "__main__":
-    esegui_integrazione_allineata()
+    main()
