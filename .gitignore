@@ -1,5 +1,6 @@
 # Ambiente virtuale
 .venv/
+venv/
 __pycache__/
 *.pyc
 
@@ -7,6 +8,8 @@ __pycache__/
 *.zip
 *.gz
 dataset/
+results/
+ditto_data/
 
 # File di sistema
 .DS_Store
