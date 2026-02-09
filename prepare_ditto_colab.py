@@ -6,7 +6,7 @@ import pandas as pd
 # ======================================================
 # CONFIGURAZIONE GOOGLE DRIVE
 # ======================================================
-DRIVE_DATASET_ROOT = "/content/drive/MyDrive/Homework6_data/dataset"
+DRIVE_DATASET_ROOT = "/content/drive/MyDrive/dataset"
 
 DATASET_PATH = os.path.join(DRIVE_DATASET_ROOT, "dataset_for_training.csv")
 SPLITS_DIR   = os.path.join(DRIVE_DATASET_ROOT, "splits")
