@@ -3,6 +3,7 @@ import numpy as np
 import recordlinkage
 import os
 import json
+import time
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 def run_complete_evaluation_suite():
@@ -30,7 +31,7 @@ def run_complete_evaluation_suite():
     splits = ['train', 'val', 'test']
     strategies = ['B1', 'B2']
 
-    print("Inizio analisi completa (Sensibilità e Performance per Split)...")
+    print("Inizio analisi completa (Sensibilità, Performance e Tempi)...")
 
     for split in splits:
         for strat in strategies:
@@ -42,6 +43,14 @@ def run_complete_evaluation_suite():
                 
             with open(block_path, "r") as f:
                 blocks = json.load(f)
+
+            # --- FASE TRAINING (Euristico) ---
+            # Nel record linkage manuale il training è il tempo di definizione dei pesi (quasi 0)
+            start_train = time.time()
+            # Simulazione caricamento logica/pesi
+            _ = np.array([2.0, 4.0, 2.0, 1.0, 1.0]) 
+            end_train = time.time()
+            training_time = end_train - start_train
 
             # Generazione coppie candidate
             candidate_pairs = []
@@ -58,7 +67,9 @@ def run_complete_evaluation_suite():
             if not candidate_pairs: continue
             all_pairs = np.vstack(candidate_pairs)
             
-            # Comparatore
+            # --- FASE INFERENZA (Comparazione e Scoring) ---
+            start_inf = time.time()
+            
             compare = recordlinkage.Compare()
             compare.string('make', 'make', method='levenshtein', threshold=0.85)
             compare.string('model', 'model', method='jarowinkler', threshold=0.85)
@@ -69,14 +80,16 @@ def run_complete_evaluation_suite():
             links = pd.MultiIndex.from_arrays([all_pairs[:, 0], all_pairs[:, 1]])
             features = compare.compute(links, df)
             scores = (features.values * weights).sum(axis=1) / weight_sum
+            
+            end_inf = time.time()
+            inference_time = end_inf - start_inf
 
-            # Ground Truth per questo set
+            # Ground Truth per valutazione
             v1 = np.array([id_to_vin.get(str(p[0])) for p in all_pairs])
             v2 = np.array([id_to_vin.get(str(p[1])) for p in all_pairs])
             y_true = ((v1 == v2) & (v1 != None)).astype(int)
 
-            # --- STUDIO SENSIBILITÀ (Solo per mostrare la scelta della soglia) ---
-            # Lo facciamo su ogni split per completezza
+            # --- STUDIO SENSIBILITÀ ---
             for t in [0.70, 0.75, 0.80, 0.85, 0.90]:
                 y_pred_t = (scores >= t).astype(int)
                 p = precision_score(y_true, y_pred_t, zero_division=0)
@@ -88,32 +101,35 @@ def run_complete_evaluation_suite():
                     'Precision': round(p, 4), 'Recall': round(r, 4), 'F1': round(f1, 4)
                 })
 
-            # --- REPORT FINALE (Soglia 0.85) ---
+            # --- REPORT FINALE CON TEMPI ---
             y_pred_final = (scores >= SOGLIA_SCELTA).astype(int)
             global_results.append({
-                'Split': split, 'Blocking': strat, 'Candidati': len(all_pairs),
+                'Split': split, 
+                'Blocking': strat, 
+                'Candidati': len(all_pairs),
                 'Precision': round(precision_score(y_true, y_pred_final, zero_division=0), 4),
                 'Recall': round(recall_score(y_true, y_pred_final, zero_division=0), 4),
-                'F1': round(f1_score(y_true, y_pred_final, zero_division=0), 4)
+                'F1': round(f1_score(y_true, y_pred_final, zero_division=0), 4),
+                'Train_Time(s)': round(training_time, 6),
+                'Inference_Time(s)': round(inference_time, 4)
             })
 
-    # 4. OUTPUT E SALVATAGGIO
+    # OUTPUT E SALVATAGGIO
     sensitivity_df = pd.DataFrame(all_sensitivity_data)
     global_df = pd.DataFrame(global_results)
 
-    print("\n" + "="*70)
-    print("1. STUDIO DELLA SENSIBILITÀ (PER GIUSTIFICARE LA SOGLIA)")
-    print("="*70)
-    # Mostriamo solo lo split di Test per brevità a video, ma salviamo tutto
+    print("\n" + "="*85)
+    print("1. STUDIO DELLA SENSIBILITÀ (TEST SET)")
+    print("="*85)
     print(sensitivity_df[sensitivity_df['Split'] == 'test'].to_string(index=False))
 
-    print("\n" + "="*70)
-    print(f"2. REPORT GLOBALE (SOGLIA FISSA A {SOGLIA_SCELTA})")
-    print("="*70)
+    print("\n" + "="*105)
+    print(f"2. REPORT GLOBALE E TEMPI (SOGLIA FISSA A {SOGLIA_SCELTA})")
+    print("="*105)
     print(global_df.sort_values(by=['Split', 'Blocking']).to_string(index=False))
 
     sensitivity_df.to_csv(os.path.join(results_dir, "full_sensitivity_analysis.csv"), index=False)
-    global_df.to_csv(os.path.join(results_dir, "global_evaluation_report.csv"), index=False)
+    global_df.to_csv(os.path.join(results_dir, "global_evaluation_report_with_times.csv"), index=False)
     
     print(f"\nReport salvati in {results_dir}")
 
