@@ -22,7 +22,6 @@ MEDIATED_SCHEMA = [
     "engine_cylinders",
     "latitude",
     "longitude",
-    "state",
     "description",
     "listing_date",
     "source"

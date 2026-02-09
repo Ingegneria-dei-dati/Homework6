@@ -4,3 +4,4 @@ scikit-learn>=1.2
 recordlinkage>=0.16
 jellyfish>=0.11
 dedupe>=2.0.0
+tqdm>=4.66

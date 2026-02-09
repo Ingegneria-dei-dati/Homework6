@@ -1,19 +1,51 @@
-# Ambiente virtuale
-.venv/
-venv/
+# ========================
+# Python
+# ========================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# Dataset (Ignora tutti i file CSV pesanti)
-*.zip
-*.gz
-dataset/
-results/
-ditto_data/
+# ========================
+# Virtual Environment
+# ========================
+.venv/
+env/
+venv/
+ENV/
 
-# File di sistema
+# ========================
+# Data / Dataset
+# ========================
+dataset/*.csv
+dataset/*.json
+dataset/blocks/
+dataset/splits/
+dataset/results/
+
+# ========================
+# Jupyter / IPython
+# ========================
+.ipynb_checkpoints/
+*.ipynb
+*.nbconvert.ipynb
+
+# ========================
+# Logs / temp
+# ========================
+*.log
+*.tmp
+*.cache
+
+# ========================
+# OS Files
+# ========================
 .DS_Store
 Thumbs.db
 
-# Credenziali (se userai Kaggle API)
-kaggle.json
+# ========================
+# IDE / Editor
+# ========================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
