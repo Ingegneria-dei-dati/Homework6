@@ -1,4 +1,4 @@
-import pandas as pd
+'''import pandas as pd
 import os
 
 def analizza_dataset_completo(file_path, nome_sorgente):
@@ -64,4 +64,78 @@ report_craigslist = analizza_dataset_completo('dataset/craigslist_vehicles.csv',
 
 # 2. Analisi del dataset US Used Cars
 # Assicurati che il nome del file sia esattamente questo
-report_us_cars = analizza_dataset_completo('dataset/used_cars_data.csv', "US USED CARS")
+report_us_cars = analizza_dataset_completo('dataset/used_cars_data.csv', "US USED CARS")'''
+
+
+import pandas as pd
+import os
+import json
+
+def profiling_completo(file_path, nome_sorgente):
+    print(f"\n" + "="*70)
+    print(f" PROFILING ATTRIBUTI: {nome_sorgente} ".center(70, "="))
+    print("="*70)
+
+    if not os.path.exists(file_path):
+        print(f"Errore: Il file {file_path} non è presente.")
+        return
+
+    # 1. ELABORAZIONE DATI (Memory Efficient)
+    chunk_size = 100000
+    total_rows = 0
+    null_counts = None
+    unique_trackers = {}
+
+    reader = pd.read_csv(file_path, chunksize=chunk_size, low_memory=False)
+
+    for i, chunk in enumerate(reader):
+        if i == 0:
+            null_counts = pd.Series(0, index=chunk.columns)
+            for col in chunk.columns: unique_trackers[col] = set()
+        
+        total_rows += len(chunk)
+        null_counts += chunk.isnull().sum()
+        for col in chunk.columns:
+            unique_trackers[col].update(chunk[col].dropna().unique())
+        
+        print(f"Righe elaborate: {total_rows}...", end='\r')
+
+    # 2. CALCOLO PERCENTUALI (Richiesto da Consegna)
+    report = []
+    for col in null_counts.index:
+        n_unici = len(unique_trackers[col])
+        null_pct = (null_counts[col] / total_rows) * 100
+        unique_pct = (n_unici / total_rows) * 100
+        
+        report.append({
+            'Attributo': col,
+            'Nulli (%)': round(null_pct, 2),
+            'Unici (%)': round(unique_pct, 4),
+            'Conteggio Unici': n_unici
+        })
+
+    df_report = pd.DataFrame(report).sort_values(by='Nulli (%)', ascending=False)
+
+    # 3. STAMPA A VIDEO (Richiesto da Consegna)
+    print("\n")
+    print(df_report.to_string(index=False))
+
+    # 4. LOGICA DI RIMOZIONE (>70% Missing)
+    to_drop = df_report[df_report['Nulli (%)'] > 70]['Attributo'].tolist()
+    print(f"\n[DECISIONE] Colonne suggerite per rimozione (>70% nulli):")
+    print(f"-> {to_drop if to_drop else 'Nessuna colonna sopra soglia'}")
+
+    # 5. SALVATAGGIO FILE (Deliverable per la Relazione)
+    results_dir = "dataset/results/eda"
+    os.makedirs(results_dir, exist_ok=True)
+    
+    file_csv = os.path.join(results_dir, f"report_{nome_sorgente.lower()}.csv")
+    df_report.to_csv(file_csv, index=False)
+    
+    print(f"\n[OK] Report salvato con successo in: {file_csv}")
+    return df_report
+
+# --- ESECUZIONE ---
+# Assicurati che i file siano nella cartella 'dataset/'
+report_cl = profiling_completo('dataset/craigslist_vehicles.csv', "CRAIGSLIST")
+report_uc = profiling_completo('dataset/used_cars_data.csv', "USED_CARS")
