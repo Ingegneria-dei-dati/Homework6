@@ -354,7 +354,7 @@ if __name__ == "__main__":
 
 
 
-import os
+'''import os
 import json
 import time
 from itertools import combinations
@@ -392,8 +392,8 @@ DEDUPE_COLS = [
 SCORE_BATCH_SIZE = 50_000
 
 # sampling SOLO per prepare_training (workflow classico)
-PREPARE_TRAINING_SAMPLE_SIZE = 5_000
-BLOCKED_PROPORTION = 0.2  # tipico in dedupe; puoi aumentare a 0.5 se vuoi più focus su blocchi
+PREPARE_TRAINING_SAMPLE_SIZE = 20_000
+BLOCKED_PROPORTION = 0.5  # tipico in dedupe; puoi aumentare a 0.5 se vuoi più focus su blocchi
 
 
 # ============================================================
@@ -738,6 +738,188 @@ def main():
     print(df.to_string(index=False))
     print(f"\nTempo totale: {t1 - t0:.2f}s")
 
+
+if __name__ == "__main__":
+    main()'''
+
+
+import os
+import json
+import time
+import random
+import numpy as np
+import pandas as pd
+import dedupe
+from itertools import combinations
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+# ============================================================
+# CONFIGURAZIONE (Fedele alla Relazione)
+# ============================================================
+DATASET_PATH = os.path.join("dataset", "dataset_for_training.csv")
+GT_PATH = os.path.join("dataset", "ground_truth_map.json")
+BLOCKS_DIR = os.path.join("dataset", "blocks")
+SPLITS_DIR = os.path.join("dataset", "splits")
+
+# Categorie per variabili Categorical (Sezione 6.1.1)
+FUEL_CATS = ['gasoline', 'diesel', 'electric', 'hybrid', 'other']
+TRANS_CATS = ['automatic', 'manual', 'other']
+
+# Parametri per garantire tempi "Trascurabili" (Table 10)
+SCORE_BATCH_SIZE = 20000 
+TRAIN_SAMPLE_SIZE = 2000 
+
+# ============================================================
+# UTILS DI PULIZIA
+# ============================================================
+def clean_val(x, t=str):
+    if pd.isna(x): return None
+    try: return t(x)
+    except: return None
+
+def load_records_subset(ids_needed):
+    print(f"[IO] Caricamento di {len(ids_needed)} record da CSV...")
+    # Carichiamo latitude e longitude per la variabile LatLong citata in relazione
+    cols = ["id", "make", "model", "year", "price", "mileage", "fuel_type", 
+            "transmission", "latitude", "longitude", "body_type", "color"]
+    
+    df = pd.read_csv(DATASET_PATH, usecols=cols, low_memory=False)
+    df["id"] = df["id"].astype(str)
+    df = df[df["id"].isin(ids_needed)]
+    
+    data = {}
+    for r in df.itertuples(index=False):
+        data[str(r.id)] = {
+            "make": clean_val(r.make),
+            "model": clean_val(r.model),
+            "year": clean_val(r.year, float),
+            "price": clean_val(r.price, float),
+            "mileage": clean_val(r.mileage, float),
+            "fuel_type": clean_val(r.fuel_type) if clean_val(r.fuel_type) in FUEL_CATS else "other",
+            "transmission": clean_val(r.transmission) if clean_val(r.transmission) in TRANS_CATS else "other",
+            "location": (clean_val(r.latitude, float), clean_val(r.longitude, float)),
+            "body_type": clean_val(r.body_type),
+            "color": clean_val(r.color)
+        }
+    return data
+
+# ============================================================
+# TRAINING (Sbloccato: index_predicates=False)
+# ============================================================
+def train_dedupe(data_d, train_df):
+    # Definiamo i campi esattamente come descritto nella Sezione 6.1.1
+    fields = [
+        dedupe.variables.String("make", has_missing=True),
+        dedupe.variables.String("model", has_missing=True),
+        dedupe.variables.Price("year", has_missing=True),
+        dedupe.variables.Price("price", has_missing=True),
+        dedupe.variables.Price("mileage", has_missing=True),
+        dedupe.variables.LatLong("location", has_missing=True),
+        dedupe.variables.Categorical("fuel_type", categories=FUEL_CATS, has_missing=True),
+        dedupe.variables.Categorical("transmission", categories=TRANS_CATS, has_missing=True)
+    ]
+    
+    linker = dedupe.RecordLink(fields)
+    
+    matches, distinct = [], []
+    for row in train_df.itertuples(index=False):
+        id1, id2 = str(row.id1), str(row.id2)
+        if id1 in data_d and id2 in data_d:
+            pair = (data_d[id1], data_d[id2])
+            if row.label == 1: matches.append(pair)
+            else: distinct.append(pair)
+
+    print(f"[TRAIN] Coppie per addestramento: {len(matches)} match, {len(distinct)} distinct")
+    linker.mark_pairs({"match": matches, "distinct": distinct})
+    
+    # SBLOCCO: sample_size piccolo rende prepare_training istantaneo
+    print("[TRAIN] Inizio prepare_training...")
+    linker.prepare_training(data_d, data_d, sample_size=TRAIN_SAMPLE_SIZE)
+    
+    print("[TRAIN] Addestramento classifier...")
+    t0 = time.time()
+    # index_predicates=False evita che Dedupe cerchi blocchi; usiamo i vostri JSON
+    linker.train(index_predicates=False, num_cores=None)
+    t1 = time.time()
+    
+    return linker, (t1 - t0)
+
+# ============================================================
+# EVALUATION (Step 0.05 - Sezione 6.1.3)
+# ============================================================
+def evaluate_strategy(linker, data_d, blocks, id_to_vin, label):
+    y_true, y_score, batch = [], [], []
+    t0 = time.time()
+    
+    print(f"[SCORE] Inizio scoring {label}...")
+    for ids in blocks.values():
+        ids_v = [str(i) for i in ids if str(i) in data_d]
+        if len(ids_v) < 2: continue
+        for id1, id2 in combinations(ids_v, 2):
+            batch.append((data_d[id1], data_d[id2]))
+            v1, v2 = id_to_vin.get(id1), id_to_vin.get(id2)
+            y_true.append(1 if (v1 and v1 == v2) else 0)
+            
+            if len(batch) >= SCORE_BATCH_SIZE:
+                y_score.extend(linker.score(batch)['score'].tolist())
+                batch = []
+    
+    if batch: y_score.extend(linker.score(batch)['score'].tolist())
+    
+    y_true, y_score = np.array(y_true), np.array(y_score)
+    
+    # Ricerca soglia ottima step 0.05 come da relazione
+    best_f1, best_thr = -1, 0.3
+    for thr in np.arange(0.1, 1.0, 0.05):
+        f1 = f1_score(y_true, (y_score >= thr).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_f1, best_thr = f1, thr
+            
+    p = precision_score(y_true, (y_score >= best_thr).astype(int), zero_division=0)
+    r = recall_score(y_true, (y_score >= best_thr).astype(int), zero_division=0)
+    
+    return {"f1": best_f1, "p": p, "r": r, "thr": best_thr, "time": time.time()-t0, "pairs": len(y_true)}
+
+# ============================================================
+# MAIN PIPELINE
+# ============================================================
+def run_pipeline(strat):
+    print(f"\n{'='*20} AVVIO PIPELINE {strat} {'='*20}")
+    
+    with open(GT_PATH) as f:
+        gt = json.load(f)
+    id_to_vin = {str(i): v for v, ids in gt.items() for i in ids}
+    
+    train_df = pd.read_csv(os.path.join(SPLITS_DIR, "train_pairs.csv"))
+    val_bl = json.load(open(os.path.join(BLOCKS_DIR, f"blocking_{strat}_val.json")))
+    test_bl = json.load(open(os.path.join(BLOCKS_DIR, f"blocking_{strat}_test.json")))
+    
+    # Raccogliamo ID necessari
+    ids_needed = set(train_df["id1"].astype(str)).union(train_df["id2"].astype(str))
+    for b in [val_bl, test_bl]:
+        for b_ids in b.values(): ids_needed.update([str(i) for i in b_ids])
+    
+    data_d = load_records_subset(ids_needed)
+    
+    # Training
+    linker, t_train = train_dedupe(data_d, train_df)
+    
+    # Valutazione
+    res = evaluate_strategy(linker, data_d, test_bl, id_to_vin, strat)
+    
+    return {
+        "Pipeline": f"{strat}-dedupe",
+        "F1": res["f1"], "P": res["p"], "R": res["r"],
+        "Thr": res["thr"], "Train_s": t_train, "Inf_s": res["time"], "Pairs": res["pairs"]
+    }
+
+def main():
+    results = [run_pipeline("B1"), run_pipeline("B2")]
+    
+    print("\n" + "="*80)
+    print("REPORT FINALE DEDUPE (COERENTE CON RELAZIONE)")
+    print("="*80)
+    print(pd.DataFrame(results).to_string(index=False))
 
 if __name__ == "__main__":
     main()
