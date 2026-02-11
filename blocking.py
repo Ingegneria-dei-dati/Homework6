@@ -3,10 +3,17 @@ import os
 import json
 
 def generate_blocks(df, group_cols, min_block_size=2):
-    """Genera i blocchi raggruppando per le colonne specificate."""
+    """Genera i blocchi raggruppando per le colonne specificate con normalizzazione."""
     df_temp = df.copy()
+    
     for col in group_cols:
-        df_temp[col] = df_temp[col].fillna('unknown').astype(str)
+        # PUNTO 1 & 3: Normalizzazione e pulizia dell'anno
+        # Trasformiamo in stringa, tutto minuscolo, rimuoviamo spazi bianchi ai bordi
+        df_temp[col] = df_temp[col].fillna('unknown').astype(str).str.lower().str.strip()
+        
+        # Se la colonna è l'anno, rimuoviamo il ".0" (es. "2018.0" -> "2018")
+        if col == 'year':
+            df_temp[col] = df_temp[col].str.replace('.0', '', regex=False)
     
     grouped = df_temp.groupby(group_cols)['id'].apply(list).to_dict()
     return {str(k): v for k, v in grouped.items() if len(v) >= min_block_size}
@@ -20,49 +27,48 @@ def apply_and_save_blocking_split():
         print(f"Errore: {input_path} non trovato.")
         return
 
-    # 1. Caricamento dataset principale
+    # 1. Caricamento dataset
     df = pd.read_csv(input_path, low_memory=False)
     df['id'] = df['id'].astype(str)
 
-    # 2. Assegnazione dello split a ogni riga del dataset
-    # Leggiamo gli ID dai file generati nel punto 4.C
+    # 2. Mappatura degli split (fondamentale per evitare Data Leakage)
     print("Mappatura degli split in corso...")
-    df['split'] = 'exclude' # Default: record che non partecipano a match o coppie
+    df['split'] = 'exclude' 
 
     for s_name in ['train', 'val', 'test']:
         pair_path = os.path.join(splits_dir, f"{s_name}_pairs.csv")
         if os.path.exists(pair_path):
             pair_df = pd.read_csv(pair_path)
-            # Prendiamo tutti gli ID univoci presenti in questo split
             ids_in_split = set(pair_df['id1'].astype(str)).union(set(pair_df['id2'].astype(str)))
             df.loc[df['id'].isin(ids_in_split), 'split'] = s_name
 
     os.makedirs(blocks_dir, exist_ok=True)
 
-    # 3. Generazione blocchi separati per ogni split
-    # Consideriamo solo train, val e test (escludiamo i record non campionati se necessario)
+    # 3. Generazione blocchi indipendenti B1 e B2
     for split in ['train', 'val', 'test']:
         split_df = df[df['split'] == split]
         if split_df.empty:
             continue
 
-        # --- B1: Broad (Make + Year) ---
+        # --- STRATEGIA B1: Broad (Marca + Anno) ---
+        # Obiettivo: Massima Recall. Ora più robusta grazie alla pulizia stringhe.
         b1_blocks = generate_blocks(split_df, ['make', 'year'])
         b1_path = os.path.join(blocks_dir, f"blocking_B1_{split}.json")
         with open(b1_path, "w") as f:
             json.dump(b1_blocks, f)
 
-        # --- B2: Strict (Make + Fuel + Transmission + Year) ---
+        # --- STRATEGIA B2: Strict (Marca + Fuel + Transmission + Year) ---
+        # Obiettivo: Efficienza. Ora più precisa eliminando discrepanze di formattazione.
         b2_blocks = generate_blocks(split_df, ['make', 'fuel_type', 'transmission', 'year'])
         b2_path = os.path.join(blocks_dir, f"blocking_B2_{split}.json")
         with open(b2_path, "w") as f:
             json.dump(b2_blocks, f)
 
         print(f"\nSplit: {split}")
-        print(f"   B1 ({b1_path}): {len(b1_blocks)} blocchi.")
-        print(f"   B2 ({b2_path}): {len(b2_blocks)} blocchi.")
+        print(f"   B1 (Normalizzato): {len(b1_blocks)} blocchi.")
+        print(f"   B2 (Normalizzato): {len(b2_blocks)} blocchi.")
 
-    print("\nBlocking completato con successo rispettando gli split.")
+    print("\nBlocking completato con normalizzazione applicata.")
 
 if __name__ == "__main__":
     apply_and_save_blocking_split()
