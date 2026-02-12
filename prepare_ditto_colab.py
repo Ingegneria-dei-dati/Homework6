@@ -2,135 +2,110 @@ import os
 import json
 import pandas as pd
 from itertools import combinations
+import time
 
-# ======================================================
-# CONFIGURAZIONE PERCORSI ASSOLUTI (A prova di errore Colab)
-# ======================================================
-# Assumendo che tu abbia clonato Homework6 in /content/Homework6
-PROJECT_ROOT = "/content/Homework6"
+# ===== CONFIG =====
+PATH_SU_DRIVE = "/content/drive/MyDrive/dataset"
 
-DATASET_PATH = os.path.join(PROJECT_ROOT, "dataset", "dataset_for_training.csv")
-SPLITS_DIR   = os.path.join(PROJECT_ROOT, "dataset", "splits")
-BLOCKS_DIR   = os.path.join(PROJECT_ROOT, "dataset", "blocks")
-GT_PATH      = os.path.join(PROJECT_ROOT, "dataset", "ground_truth_map.json")
+DATASET_PATH = os.path.join(PATH_SU_DRIVE, "dataset_for_training.csv")
+SPLITS_DIR   = os.path.join(PATH_SU_DRIVE, "splits")
+BLOCKS_DIR   = os.path.join(PATH_SU_DRIVE, "blocks")
 
-# Destinazione nella cartella della repository Ditto
 FAIR_ROOT = "/content/FAIR-DA4ER"
-OUT_BASE  = os.path.join(FAIR_ROOT, "data", "cars_base")
-OUT_B1    = os.path.join(FAIR_ROOT, "data", "cars_B1")
-OUT_B2    = os.path.join(FAIR_ROOT, "data", "cars_B2")
+OUT_B1 = os.path.join(FAIR_ROOT, "data", "cars_B1")
+OUT_B2 = os.path.join(FAIR_ROOT, "data", "cars_B2")
 
-# Campi definiti nella Relazione (Sezione 6.1.1)
 FIELDS = [
-    "make", "model_norm_full", "year", "price", "mileage",
-    "fuel_type", "transmission", "body_type", "drive", "color"
+    "make", "model", "year", "price", "mileage", "fuel_type", 
+    "transmission", "body_type", "drive", "color", 
+    "engine_cylinders", "latitude", "longitude", "description"
 ]
 
-# ======================================================
-# FUNZIONI DI SERIALIZZAZIONE (Sezione 6.2.1)
-# ======================================================
-def clean(x):
-    if pd.isna(x):
-        return ""
-    s = str(x).strip().lower()
-    if s in ("nan", "none", "null", "unknown"):
-        return ""
-    return s
+CHUNK_SIZE = 50_000  # per serializzazione
 
-def serialize_record(row):
-    """Trasforma riga CSV nel formato COL VAL richiesto da Ditto"""
-    parts = []
-    for f in FIELDS:
-        v = clean(row.get(f, ""))
-        parts.append(f"COL {f} VAL {v}")
-    return " ".join(parts)
-
-def load_id_to_vin(gt_path):
-    if not os.path.exists(gt_path):
-        print(f"⚠️ Warning: Ground Truth non trovata in {gt_path}")
-        return {}
-    with open(gt_path, "r", encoding="utf-8") as f:
-        gt_map = json.load(f)
-    return {str(i): vin for vin, ids in gt_map.items() for i in ids}
-
-def load_blocks(path):
+# ===== UTILITIES =====
+def load_json(path):
     if not os.path.exists(path):
-        print(f"⚠️ Warning: Blocchi non trovati in {path}")
         return {}
     with open(path, "r", encoding="utf-8") as f:
-        b = json.load(f)
-    return {k: [str(x) for x in v] for k, v in b.items()}
+        return json.load(f)
 
-def write_pairs_txt(df_pairs, recs, out_path):
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    n = 0
-    with open(out_path, "w", encoding="utf-8") as w:
-        for _, r in df_pairs.iterrows():
-            id1, id2, lab = str(r["id1"]), str(r["id2"]), int(r["label"])
-            if id1 not in recs or id2 not in recs:
-                continue
-            w.write(f"{recs[id1]}\t{recs[id2]}\t{lab}\n")
-            n += 1
-    print(f"[WRITE] {out_path}: {n} righe")
+def build_recs_map():
+    """Serializza i record in stringhe Ditto a chunk per non esplodere RAM"""
+    print("🚀 Serializzazione streaming...")
+    recs = {}
+    for chunk in pd.read_csv(DATASET_PATH, usecols=["id"] + FIELDS,
+                             chunksize=CHUNK_SIZE, low_memory=False):
+        chunk["id"] = chunk["id"].astype(str)
+        cols = []
+        for f in FIELDS:
+            if f in chunk.columns:
+                cols.append("COL " + f + " VAL " +
+                            chunk[f].fillna("").astype(str).str.lower().str.strip())
+        serialized = pd.concat(cols, axis=1).agg(" ".join, axis=1)
+        recs.update(dict(zip(chunk["id"], serialized)))
+        print(f"  ✔ chunk caricato ({len(recs)} record totali)")
+    return recs
 
-def write_blocked_pairs_txt(blocks, recs, id_to_vin, out_path):
+def write_pairs_from_blocks(blocks, recs, id_to_vin, out_path, log_every=100_000):
+    """Scrive coppie dai blocchi e stampa avanzamento ogni N coppie"""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    n = 0
-    with open(out_path, "w", encoding="utf-8") as w:
-        for _, ids in blocks.items():
-            ids = [i for i in ids if i in recs]
-            if len(ids) < 2:
+    count = 0
+    start_time = time.time()
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for ids in blocks.values():
+            valid_ids = [str(i) for i in ids if str(i) in recs]
+            if len(valid_ids) < 2:
                 continue
-            for a, b in combinations(ids, 2):
+
+            for a, b in combinations(valid_ids, 2):
                 va, vb = id_to_vin.get(a), id_to_vin.get(b)
-                lab = 1 if (va is not None and va == vb) else 0
-                w.write(f"{recs[a]}\t{recs[b]}\t{lab}\n")
-                n += 1
-    print(f"[WRITE] {out_path}: {n} righe")
+                label = 1 if (va and vb and va == vb) else 0
+                f.write(f"{recs[a]}\t{recs[b]}\t{label}\n")
+                count += 1
 
-# ======================================================
-# MAIN
-# ======================================================
+                if count % log_every == 0:
+                    elapsed = time.time() - start_time
+                    print(f"  ⚡ {count} coppie generate ({elapsed:.1f}s)")
+
+    print(f"  ✅ {os.path.basename(out_path)}: {count} coppie totali")
+
+# ===== MAIN =====
 def main():
-    if not os.path.exists(DATASET_PATH):
-        print(f"❌ ERRORE: Dataset non trovato in {DATASET_PATH}")
-        return
+    t0 = time.time()
 
-    print("🚀 Inizio preparazione dati...")
-    df = pd.read_csv(DATASET_PATH, low_memory=False)
-    df["id"] = df["id"].astype(str)
+    print("🚀 1. Build record map")
+    recs = build_recs_map()
 
-    print("Serializzazione record in corso...")
-    recs = {str(row["id"]): serialize_record(row) for _, row in df.iterrows()}
+    print("🚀 2. Load ground truth")
+    gt = load_json(os.path.join(PATH_SU_DRIVE, "ground_truth_map.json"))
+    id_to_vin = {str(i): vin for vin, ids in gt.items() for i in ids}
 
-    # Caricamento Split
+    print("🚀 3. Load train pairs")
     train_df = pd.read_csv(os.path.join(SPLITS_DIR, "train_pairs.csv"))
-    val_df   = pd.read_csv(os.path.join(SPLITS_DIR, "val_pairs.csv"))
-    test_df  = pd.read_csv(os.path.join(SPLITS_DIR, "test_pairs.csv"))
-    id_to_vin = load_id_to_vin(GT_PATH)
 
-    # Scrittura BASE (Data originale)
-    write_pairs_txt(train_df, recs, os.path.join(OUT_BASE, "train.txt"))
-    write_pairs_txt(val_df,   recs, os.path.join(OUT_BASE, "valid.txt"))
-    write_pairs_txt(test_df,  recs, os.path.join(OUT_BASE, "test.txt"))
+    for strat, out_dir in [("B1", OUT_B1), ("B2", OUT_B2)]:
+        print(f"\n📦 Strategia {strat}")
 
-    # Elaborazione Strategia B1
-    print("Elaborazione B1...")
-    blocks_val_b1  = load_blocks(os.path.join(BLOCKS_DIR, "blocking_B1_val.json"))
-    blocks_test_b1 = load_blocks(os.path.join(BLOCKS_DIR, "blocking_B1_test.json"))
-    write_pairs_txt(train_df, recs, os.path.join(OUT_B1, "train.txt"))
-    write_blocked_pairs_txt(blocks_val_b1, recs, id_to_vin, os.path.join(OUT_B1, "valid.txt"))
-    write_blocked_pairs_txt(blocks_test_b1, recs, id_to_vin, os.path.join(OUT_B1, "test.txt"))
+        # TRAIN
+        os.makedirs(out_dir, exist_ok=True)
+        train_path = os.path.join(out_dir, "train.txt")
+        with open(train_path, "w", encoding="utf-8") as f:
+            for r in train_df.itertuples(index=False):
+                id1, id2 = str(r.id1), str(r.id2)
+                if id1 in recs and id2 in recs:
+                    f.write(f"{recs[id1]}\t{recs[id2]}\t{int(r.label)}\n")
+        print(f"  ✅ train.txt scritto")
 
-    # Elaborazione Strategia B2
-    print("Elaborazione B2...")
-    blocks_val_b2  = load_blocks(os.path.join(BLOCKS_DIR, "blocking_B2_val.json"))
-    blocks_test_b2 = load_blocks(os.path.join(BLOCKS_DIR, "blocking_B2_test.json"))
-    write_pairs_txt(train_df, recs, os.path.join(OUT_B2, "train.txt"))
-    write_blocked_pairs_txt(blocks_val_b2, recs, id_to_vin, os.path.join(OUT_B2, "valid.txt"))
-    write_blocked_pairs_txt(blocks_test_b2, recs, id_to_vin, os.path.join(OUT_B2, "test.txt"))
+        # VAL / TEST
+        for split in ["val", "test"]:
+            block_file = os.path.join(BLOCKS_DIR, f"blocking_{strat}_{split}.json")
+            blocks = load_json(block_file)
+            out_file = os.path.join(out_dir, "valid.txt" if split=="val" else "test.txt")
+            write_pairs_from_blocks(blocks, recs, id_to_vin, out_file)
 
-    print("✅ Fatto! I file sono pronti in /content/FAIR-DA4ER/data/")
+    print(f"\n✨ Completato in {time.time() - t0:.1f}s")
 
 if __name__ == "__main__":
     main()
