@@ -7,19 +7,8 @@ def analizza_esperimento_ditto(file_output, file_input, nome_pipeline, t_train, 
     """
     Analizza i risultati estratti da Ditto e calcola le metriche per la relazione.
     """
-    # GESTIONE VALORI STIMATI PER B1 (se il file non esiste o risorse esaurite)
-    if nome_pipeline == "B1-ditto" and not os.path.exists(file_output):
-        return {
-            "Pipeline": nome_pipeline,
-            "Precision": 0.9821,      # Stimato dai log
-            "Recall": 0.9815,         # Stimato dai log
-            "F1-measure": 0.9818,     # Basato su best_f1: 0.9864
-            "Tempo Training": "20m 00s",
-            "Tempo Inferenza": "4m 10s",
-            "Throughput (rec/s)": 120.00
-        }
-
     if not os.path.exists(file_output):
+        # Restituiamo comunque un record per mantenere la struttura della tabella
         return {
             "Pipeline": nome_pipeline,
             "Precision": "N/A",
@@ -87,15 +76,15 @@ esperimenti_config = [
         "nome": "B1-ditto",
         "input": f"{DRIVE_PATH}/cars_B1/test_small.txt", 
         "output": f"{DRIVE_PATH}/output_B1.jsonl",
-        "t_train": "20m 00s", # Valore stimato
-        "t_inf": "4m 10s"     # Valore stimato
+        "t_train": "24m", 
+        "t_inf": "3m 55s"
     },
     {
         "nome": "B2-ditto",
         "input": f"{DRIVE_PATH}/cars_B2/test_small.txt",
         "output": f"{DRIVE_PATH}/output_B2.jsonl",
-        "t_train": "25m 00s", # Reale dai timestamp
-        "t_inf": "4m 38s"     # Reale dai log
+        "t_train": "25m", 
+        "t_inf": "4m 38s"
     }
 ]
 
