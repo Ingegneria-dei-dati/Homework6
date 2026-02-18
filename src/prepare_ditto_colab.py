@@ -24,7 +24,7 @@ FIELDS = ["make", "model", "year", "price", "mileage", "fuel_type",
 CHUNK_SIZE = 50_000
 
 def build_recs_map():
-    print("🚀 Serializzazione streaming dei record...")
+    print(" Serializzazione streaming dei record...")
     recs = {}
     # Usiamo 'id' o 'listing_id' a seconda del tuo CSV
     for chunk in pd.read_csv(DATASET_PATH, usecols=["id"] + FIELDS, chunksize=CHUNK_SIZE, low_memory=False):
@@ -43,7 +43,7 @@ def main():
     train_df = pd.read_csv(os.path.join(SPLITS_DIR, "train_pairs.csv"))
 
     for strat, out_dir in [("B1", OUT_B1), ("B2", OUT_B2)]:
-        print(f"\n📦 Strategia {strat} -> {out_dir}")
+        print(f"\n Strategia {strat} -> {out_dir}")
         # Scrittura TRAIN
         with open(os.path.join(out_dir, "train.txt"), "w") as f:
             for r in train_df.itertuples(index=False):
@@ -65,7 +65,7 @@ def main():
             del blocks
             gc.collect()
 
-    print(f"✨ Completato in {time.time() - t0:.1f}s")
+    print(f" Completato in {time.time() - t0:.1f}s")
 
 if __name__ == "__main__":
     main()

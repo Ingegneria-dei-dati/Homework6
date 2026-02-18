@@ -109,9 +109,9 @@ if report_data:
     file_relazione = f"{DRIVE_PATH}/Analisi_Prestazioni_Ditto.csv"
     df_relazione.to_csv(file_relazione, index=False)
     
-    print(f"✅ Report tecnico generato: {file_relazione}")
+    print(f"Report tecnico generato: {file_relazione}")
     print("\n" + "="*100)
     print(df_relazione.to_string(index=False))
     print("="*100)
 else:
-    print("❌ Nessun dato trovato per generare la relazione.")
+    print("Nessun dato trovato per generare la relazione.")

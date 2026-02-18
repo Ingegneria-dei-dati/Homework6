@@ -16,7 +16,7 @@ def prepare_datasets_for_training():
     # Caricamento del dataset pulito
     df = pd.read_csv(input_path, low_memory=False)
     
-    # 1. Creazione della Ground Truth (Mappa dei Match)
+    # 1. Creazione della Ground Truth
     # NOTA: Usiamo 'Vin' (maiuscolo) e 'listing_id' come da schema mediato precedente
     print("Generazione mappa Ground Truth...")
     

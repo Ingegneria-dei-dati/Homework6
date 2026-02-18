@@ -54,7 +54,7 @@ def clean_and_repair_vin_pipeline():
 
     df.loc[df['Vin'].apply(is_invalid_pattern), 'Vin'] = np.nan
 
-    # 3. Gestione Legacy VIN (< 1981)
+    # 3. Gestione storici VIN (< 1981)
     # Isoliamo i record prodotti prima della standardizzazione ISO del 1981
     legacy_mask = (df['year'] < 1981) & (df['Vin'].notna())
     df_legacy = df[legacy_mask].copy()

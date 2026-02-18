@@ -7,7 +7,7 @@ def generate_blocks(df, group_cols, min_block_size=2):
     df_temp = df.copy()
     
     for col in group_cols:
-        # PUNTO 1 & 3: Normalizzazione e pulizia dell'anno
+        # Normalizzazione e pulizia dell'anno
         # Trasformiamo in stringa, tutto minuscolo, rimuoviamo spazi bianchi ai bordi
         df_temp[col] = df_temp[col].fillna('unknown').astype(str).str.lower().str.strip()
         

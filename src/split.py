@@ -22,7 +22,7 @@ def main():
 
     # 1. Caricamento Dati
     if not os.path.exists(DATASET_PATH) or not os.path.exists(GT_PATH):
-        print("Errore: Dataset o Ground Truth non trovati. Verifica i passaggi 4.A e 4.B.")
+        print("Errore: Dataset o Ground Truth non trovati.")
         return
 
     df = pd.read_csv(DATASET_PATH, low_memory=False)
@@ -46,7 +46,7 @@ def main():
         pos_pairs = []
         print(f"   Elaborazione {subset_name} ({len(vin_subset)} entità)...")
 
-        # Generazione Coppie POSITIVE (Label 1)
+        # Generazione Coppie POSITIVE
         for vin in vin_subset:
             ids = gt_map[vin]
             n = len(ids)
@@ -64,7 +64,7 @@ def main():
         df_pos = pd.DataFrame(pos_pairs)
         num_neg_needed = len(df_pos)
 
-        # Generazione Coppie NEGATIVE (Label 0) - Bilanciamento 1:1
+        # Generazione Coppie NEGATIVE 
         neg_pairs = []
         attempts = 0
         while len(neg_pairs) < num_neg_needed and attempts < num_neg_needed * 5:
