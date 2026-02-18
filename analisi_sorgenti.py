@@ -69,7 +69,7 @@ report_us_cars = analizza_dataset_completo('dataset/used_cars_data.csv', "US USE
 
 import pandas as pd
 import os
-import json
+import matplotlib.pyplot as plt
 
 def profiling_completo(file_path, nome_sorgente):
     print(f"\n" + "="*70)
@@ -100,7 +100,7 @@ def profiling_completo(file_path, nome_sorgente):
         
         print(f"Righe elaborate: {total_rows}...", end='\r')
 
-    # 2. CALCOLO PERCENTUALI (Richiesto da Consegna)
+    # 2. CALCOLO PERCENTUALI
     report = []
     for col in null_counts.index:
         n_unici = len(unique_trackers[col])
@@ -114,9 +114,10 @@ def profiling_completo(file_path, nome_sorgente):
             'Conteggio Unici': n_unici
         })
 
+    # Ordiniamo per % di nulli per una migliore visualizzazione
     df_report = pd.DataFrame(report).sort_values(by='Nulli (%)', ascending=False)
 
-    # 3. STAMPA A VIDEO (Richiesto da Consegna)
+    # 3. STAMPA A VIDEO
     print("\n")
     print(df_report.to_string(index=False))
 
@@ -125,17 +126,47 @@ def profiling_completo(file_path, nome_sorgente):
     print(f"\n[DECISIONE] Colonne suggerite per rimozione (>70% nulli):")
     print(f"-> {to_drop if to_drop else 'Nessuna colonna sopra soglia'}")
 
-    # 5. SALVATAGGIO FILE (Deliverable per la Relazione)
+    # 5. SALVATAGGIO CSV
     results_dir = "dataset/results/eda"
     os.makedirs(results_dir, exist_ok=True)
-    
     file_csv = os.path.join(results_dir, f"report_{nome_sorgente.lower()}.csv")
     df_report.to_csv(file_csv, index=False)
+
+    # 6. GENERAZIONE GRAFICO VISIVO
+    # Calcolo altezza dinamica: 0.3 pollici per ogni attributo (minimo 8 pollici)
+    altezza_dinamica = max(8, len(df_report) * 0.2)
     
-    print(f"\n[OK] Report salvato con successo in: {file_csv}")
+    plt.figure(figsize=(12, altezza_dinamica))
+    
+    # height=0.7 riduce lo spessore delle barre lasciando più spazio tra loro
+    bars = plt.barh(df_report['Attributo'], df_report['Nulli (%)'], 
+                    color='skyblue', edgecolor='navy', height=0.7)
+    
+    # Linea rossa per la soglia del 70%
+    plt.axvline(x=70, color='red', linestyle='--', linewidth=2, label='Soglia 70% (Rimozione)')
+    
+    plt.xlabel('Percentuale di Valori Nulli (%)', fontsize=12)
+    plt.ylabel('Attributi', fontsize=12)
+    plt.title(f'Distribuzione Valori Nulli - {nome_sorgente}', fontsize=14, pad=20)
+    
+    # Ottimizzazione etichette asse Y
+    plt.yticks(fontsize=10) 
+    plt.gca().invert_yaxis()
+    plt.grid(axis='x', linestyle=':', alpha=0.7)
+    plt.legend(loc='upper right')
+    
+
+    # Salvataggio immagine con bbox_inches='tight' per non tagliare le scritte lunghe
+    file_img = os.path.join(results_dir, f"plot_nulli_{nome_sorgente.lower()}.png")
+    plt.tight_layout()
+    plt.savefig(file_img, bbox_inches='tight', dpi=150)
+    plt.close() # Chiude la figura per liberare memoria
+    
+    print(f"[OK] Report CSV: {file_csv}")
+    print(f"[OK] Grafico PNG: {file_img}")
+    
     return df_report
 
 # --- ESECUZIONE ---
-# Assicurati che i file siano nella cartella 'dataset/'
-report_cl = profiling_completo('dataset/craigslist_vehicles.csv', "CRAIGSLIST")
+#report_cl = profiling_completo('dataset/craigslist_vehicles.csv', "CRAIGSLIST")
 report_uc = profiling_completo('dataset/used_cars_data.csv', "USED_CARS")
