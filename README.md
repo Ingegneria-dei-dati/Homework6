@@ -53,7 +53,7 @@ Sono stati analizzati tre approcci metodologici:
 | Metodo                  | Blocking | F1-Score |
 |-------------------------|-----------|---------|
 | Record Linkage          | B2      | 0.87     |
-| Dedupe (P2_minimal)     | B1      | 0.9114   |
+| Dedupe (P2_minimal)     | B1      | 0.968   |
 | Ditto (RoBERTa)         | B1      | 0.9860   |
 
 
