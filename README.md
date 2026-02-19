@@ -53,10 +53,11 @@ Sono stati analizzati tre approcci metodologici:
 | Metodo                  | Blocking | F1-Score |
 |-------------------------|-----------|---------|
 | Record Linkage          | B2      | 0.87     |
-| Dedupe (P2_minimal)     | B1      | 0.9478   |
+| Dedupe (P2_minimal)     | B1      | 0.9114   |
 | Ditto (RoBERTa)         | B1      | 0.9860   |
 
 
 ### Conclusioni
 - **Dedupe** rappresenta il compromesso ottimale tra efficienza e precisione, risultando la soluzione più equilibrata per dataset tabellari già normalizzati.  
 - **Ditto** massimizza la **Recall** (fino al 99.95%) ed è preferibile quando l’accuratezza è la priorità assoluta, a fronte di costi computazionali maggiori.
+
