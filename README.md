@@ -25,8 +25,8 @@ Il dataset è stato suddiviso a livello di VIN (70% Train, 15% Val, 15% Test) pe
 ### 3. Strategie di Blocking
 Per ottimizzare i confronti, sono state implementate due strategie:
 
-- **B1 (Broad):** basata su `make` e `year`, mirata a massimizzare la Recall.
-- **B2 (Strict):** include anche `fuel_type` e `transmission` per ridurre drasticamente la dimensione dei blocchi.
+- **B1 :** basata su `make` e `year`, mirata a massimizzare la Recall.
+- **B2 :** include anche `fuel_type` e `transmission` per ridurre drasticamente la dimensione dei blocchi.
 
 ## 🧪 Paradigmi a Confronto
 Sono stati analizzati tre approcci metodologici:
@@ -39,8 +39,8 @@ Sono stati analizzati tre approcci metodologici:
 - Classificatore logistico addestrato su coppie di esempi.  
 - **Similarità:** fuzzy matching per stringhe, scala logaritmica per prezzi.  
 - **Pipeline testate:**  
-  - `P1_full`: tutti gli attributi  
-  - `P2_minimal`: esclusione di `price` e `mileage` per ridurre il rumore
+  - `Dedupe_Extended`: tutti gli attributi  
+  - `Dedupe_Core`: esclusione di `price` e `mileage` per ridurre il rumore
 
 **C. Ditto (Deep Learning)**  
 - Framework basato su Transformer (RoBERTa-base) che serializza i record in sequenze testuali.  
@@ -53,11 +53,12 @@ Sono stati analizzati tre approcci metodologici:
 | Metodo                  | Blocking | F1-Score |
 |-------------------------|-----------|---------|
 | Record Linkage          | B2      | 0.87     |
-| Dedupe (P2_minimal)     | B1      | 0.968   |
+| Dedupe                  | B1      | 0.968   |
 | Ditto (RoBERTa)         | B1      | 0.9860   |
 
 
 ### Conclusioni
 - **Dedupe** rappresenta il compromesso ottimale tra efficienza e precisione, risultando la soluzione più equilibrata per dataset tabellari già normalizzati.  
 - **Ditto** massimizza la **Recall** (fino al 99.95%) ed è preferibile quando l’accuratezza è la priorità assoluta, a fronte di costi computazionali maggiori.
+
 
